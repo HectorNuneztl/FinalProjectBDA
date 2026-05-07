@@ -53,9 +53,8 @@ def preprocess_query(query):
 
 
 # -----------------------------
-# COSINE SIMILARITY IN SQL
+# COSINE AND JACCARD SIMILARITY IN SQL
 # -----------------------------
-
 
 def cosine_similarity_query(query_text):
 
@@ -116,6 +115,65 @@ def cosine_similarity_query(query_text):
 
     for row in results:
         print(row)
+
+def jaccard_similarity(doc1, doc2):
+
+    sql = """
+
+    SELECT
+
+        CAST(COUNT(DISTINCT f1.term_id) AS FLOAT)
+
+        /
+
+        (
+
+            SELECT COUNT(DISTINCT term_id)
+
+            FROM (
+
+                SELECT term_id
+                FROM FREQUENCIES
+                WHERE document_id = (
+                    SELECT id FROM DOCUMENTS WHERE name = ?
+                )
+
+                UNION
+
+                SELECT term_id
+                FROM FREQUENCIES
+                WHERE document_id = (
+                    SELECT id FROM DOCUMENTS WHERE name = ?
+                )
+
+            )
+
+        ) AS jaccard_similarity
+
+    FROM FREQUENCIES f1
+
+    JOIN FREQUENCIES f2
+        ON f1.term_id = f2.term_id
+
+    WHERE f1.document_id = (
+        SELECT id FROM DOCUMENTS WHERE name = ?
+    )
+
+    AND f2.document_id = (
+        SELECT id FROM DOCUMENTS WHERE name = ?
+    )
+
+    """
+
+    cursor.execute(sql, (doc1, doc2, doc1, doc2))
+
+    result = cursor.fetchone()[0]
+
+    print("\nJaccard Similarity:\n")
+
+    print(f"{doc1} vs {doc2}")
+
+    print(f"\nJaccard Score: {result}")
 
 
 # -----------------------------
@@ -220,14 +278,29 @@ def semantic_search():
 
 def compare_documents(doc1, doc2):
 
+    # -----------------------------
+    # COSINE SIMILARITY
+    # -----------------------------
+
     sql_cosine = """
+
     SELECT
-        SUM(f1.frequency * f2.frequency) * 1.0 /
+
+        SUM(f1.frequency * f2.frequency) * 1.0
+
+        /
 
         (
-            SQRT(SUM(f1.frequency * f1.frequency)) *
+
+            SQRT(SUM(f1.frequency * f1.frequency))
+
+            *
+
             SQRT(SUM(f2.frequency * f2.frequency))
-        ) AS cosine_similarity
+
+        )
+
+        AS cosine_similarity
 
     FROM FREQUENCIES f1
 
@@ -242,16 +315,35 @@ def compare_documents(doc1, doc2):
 
     WHERE d1.name = ?
     AND d2.name = ?
+
     """
 
     cursor.execute(sql_cosine, (doc1, doc2))
 
     cosine_result = cursor.fetchone()[0]
 
+    # -----------------------------
+    # EUCLIDEAN DISTANCE
+    # -----------------------------
+
     sql_euclidean = """
+
     SELECT
-        SQRT(SUM((COALESCE(f1.frequency,0) - COALESCE(f2.frequency,0)) *
-                  (COALESCE(f1.frequency,0) - COALESCE(f2.frequency,0))))
+
+        SQRT(
+
+            SUM(
+
+                (COALESCE(f1.frequency,0) - COALESCE(f2.frequency,0))
+
+                *
+
+                (COALESCE(f1.frequency,0) - COALESCE(f2.frequency,0))
+
+            )
+
+        )
+
         AS euclidean_distance
 
     FROM TERMS t
@@ -259,27 +351,48 @@ def compare_documents(doc1, doc2):
     LEFT JOIN FREQUENCIES f1
         ON t.id = f1.term_id
         AND f1.document_id = (
-            SELECT id FROM DOCUMENTS WHERE name = ?
+            SELECT id
+            FROM DOCUMENTS
+            WHERE name = ?
         )
 
     LEFT JOIN FREQUENCIES f2
         ON t.id = f2.term_id
         AND f2.document_id = (
-            SELECT id FROM DOCUMENTS WHERE name = ?
+            SELECT id
+            FROM DOCUMENTS
+            WHERE name = ?
         )
+
     """
 
     cursor.execute(sql_euclidean, (doc1, doc2))
 
     euclidean_result = cursor.fetchone()[0]
 
-    print("\nDocument Comparison:\n")
+    # -----------------------------
+    # JACCARD SIMILARITY
+    # -----------------------------
+
+    jaccard_result = jaccard_similarity(doc1, doc2)
+
+    # -----------------------------
+    # DISPLAY RESULTS
+    # -----------------------------
+
+    print("\nDOCUMENT COMPARISON\n")
 
     print(f"{doc1} vs {doc2}")
 
+    print("\nSimilarity Techniques:")
+
     print(f"\nCosine Similarity: {cosine_result}")
 
-    print(f"Euclidean Distance: {euclidean_result}")
+    print(f"Jaccard Similarity: {jaccard_result}")
+
+    print("\nDissimilarity Technique:")
+
+    print(f"\nEuclidean Distance: {euclidean_result}")
 
 
 if __name__ == "__main__":
